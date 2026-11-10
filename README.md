@@ -2,6 +2,8 @@
 
 An interactive caffeine calculator: drag your cups along the day and see how much caffeine is still in you at bedtime, with your own half-life.
 
+**Live: [sthsci.github.io/caffeine-curve](https://sthsci.github.io/caffeine-curve/)**
+
 A single, dependency-free HTML page. Open `index.html` in a browser, or serve the folder with any static server.
 
 ## What it does
