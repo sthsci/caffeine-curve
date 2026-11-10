@@ -4,6 +4,8 @@ An interactive caffeine calculator: drag your cups along the day and see how muc
 
 **Live: [sthsci.github.io/caffeine-curve](https://sthsci.github.io/caffeine-curve/)**
 
+> **Acknowledgement.** The original concept, design and interaction are by **[Charles Postiaux](https://x.com/PostiauxCharles)**, from his demo [*Caffeine consumption for optimal sleep*](https://x.com/PostiauxCharles/status/2119801461278146758) (9 November 2026). This repository is simply a recreation of that demo, built with Claude (Fable 5.1) to test what the model could reproduce from a 14-second video. It is not affiliated with or endorsed by him, and all credit for the idea belongs to him.
+
 A single, dependency-free HTML page. Open `index.html` in a browser, or serve the folder with any static server.
 
 ## What it does
@@ -40,7 +42,7 @@ A(t) = Σ D · ka/(ka − ke) · (e^(−ke·τ) − e^(−ka·τ)),   τ = t −
 
 ## Credits
 
-Layout inspired by [Charles Postiaux's demo](https://x.com/PostiauxCharles/status/2119801461278146758) (9 Nov 2026); this is an independent implementation. For alertness-optimised dosing, see the US Army's [2B-Alert Web](https://2b-alert-web.bhsai.org/).
+Original author of the concept and design: [Charles Postiaux](https://x.com/PostiauxCharles) ([demo](https://x.com/PostiauxCharles/status/2119801461278146758), 9 Nov 2026). This recreation was written with Claude (Fable 5.1) as a test; the model's numbers were checked against the figures visible in his video. For alertness-optimised dosing, see the US Army's [2B-Alert Web](https://2b-alert-web.bhsai.org/).
 
 Fonts: [Bricolage Grotesque](https://fonts.google.com/specimen/Bricolage+Grotesque) and [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) via Google Fonts, with system fallbacks.
 
