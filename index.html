@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Drag your cups along the day and see how much caffeine is still in you at bedtime, with your own half-life.">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Caffeine Curve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working surface. Readouts strip, then the chart (the hero, with draggable cups on its axis), then a controls rail, then notes. */
+:root {
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --fg: #1a1d22;
+  --fg-2: #4b525d;
+  --muted: #7d8591;
+  --line: #d9dde3;
+  --grid: #e7eaee;
+  --accent: #8a4a1c;        /* roasted coffee */
+  --accent-soft: #d8b48e;
+  --accent-fill: rgba(138, 74, 28, 0.16);
+  --sleep: #4552b8;         /* night */
+  --sleep-fill: rgba(69, 82, 184, 0.07);
+  --good: #1e7a4c;
+  --warn: #b0620f;
+  --bad: #b3261e;
+  --focus: #2f6fed;
+  --display: "Bricolage Grotesque", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111317; --surface: #191c22; --fg: #ecedf0; --fg-2: #b4bac4; --muted: #7f8794;
+    --line: #2d323b; --grid: #232830;
+    --accent: #d9a06a; --accent-soft: #6b4521; --accent-fill: rgba(217, 160, 106, 0.18);
+    --sleep: #8f9bff; --sleep-fill: rgba(143, 155, 255, 0.08);
+    --good: #4fc287; --warn: #e3a04a; --bad: #f0766c; --focus: #7aa5ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111317; --surface: #191c22; --fg: #ecedf0; --fg-2: #b4bac4; --muted: #7f8794;
+  --line: #2d323b; --grid: #232830;
+  --accent: #d9a06a; --accent-soft: #6b4521; --accent-fill: rgba(217, 160, 106, 0.18);
+  --sleep: #8f9bff; --sleep-fill: rgba(143, 155, 255, 0.08);
+  --good: #4fc287; --warn: #e3a04a; --bad: #f0766c; --focus: #7aa5ff;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(28px, 4vw, 38px); font-weight: 600; line-height: 1.1; }
+h2 { font-size: 15px; font-weight: 600; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.06em; }
+.lede { color: var(--fg-2); max-width: 62ch; margin: 6px 0 0; }
+.mono, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Readouts */
+.readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.readout { padding: 14px 16px 14px 0; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.readout + .readout { padding-left: 16px; border-left: 1px solid var(--line); }
+.readout .value { font-family: var(--mono); font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.readout .value small { font-size: 14px; color: var(--muted); margin-left: 2px; }
+.readout .sub { font-size: 13px; color: var(--fg-2); min-height: 1.5em; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.good { color: var(--good); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+@media (max-width: 640px) {
+  .readouts { grid-template-columns: 1fr 1fr; }
+  .readout { padding: 12px 8px; border-left: none !important; }
+  .readout:nth-child(odd) { padding-left: 0; }
+  .readout .value { font-size: 22px; }
+}
+
+/* Chart */
+.chart-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 14px 8px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 0 2px 6px; }
+.chart-head .hint { font-size: 13px; color: var(--muted); }
+svg.chart { display: block; width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.chart text { fill: var(--fg-2); font-size: 11px; }
+.chart .grid line { stroke: var(--grid); stroke-width: 1; }
+.chart .axis line { stroke: var(--line); }
+.chart .area { fill: var(--accent-fill); }
+.chart .curve { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.chart .sel-area { fill: var(--accent); fill-opacity: 0.42; }
+.chart .sel-curve { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: .9; }
+.chart .threshold { stroke: var(--fg-2); stroke-width: 1; stroke-dasharray: 4 4; }
+.chart .sleep-zone { fill: var(--sleep-fill); }
+.chart .bed-line { stroke: var(--sleep); stroke-width: 1.5; }
+.chart .bed-label { fill: var(--sleep); font-weight: 500; }
+.chart .peak-label { fill: var(--fg); font-weight: 500; }
+.chart .cup { cursor: grab; }
+.chart .cup:active { cursor: grabbing; }
+.chart .cup circle.hit { fill: transparent; }
+.chart .cup circle.dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart .cup.selected circle.dot { fill: var(--fg); }
+.chart .cup line.stem { stroke: var(--accent); stroke-width: 1; opacity: .35; }
+.chart .cup text { fill: var(--fg); font-size: 11px; text-anchor: middle; }
+.chart .cup:focus { outline: none; }
+.chart .cup:focus-visible circle.dot { stroke: var(--focus); stroke-width: 3; }
+.chart .crosshair line { stroke: var(--fg-2); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart .crosshair circle { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 2; background: var(--surface); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 1.4;
+  box-shadow: 0 6px 20px rgba(0,0,0,.12); min-width: 150px;
+}
+.tooltip .t { font-family: var(--mono); font-weight: 500; font-size: 13px; }
+.tooltip .row { display: flex; justify-content: space-between; gap: 14px; color: var(--fg-2); }
+.tooltip .row b { color: var(--fg); font-weight: 500; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Controls */
+.controls { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 760px) { .controls { grid-template-columns: 1fr; } }
+.panel { display: grid; gap: 12px; align-content: start; }
+.panel h2 { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.cups { display: grid; gap: 8px; }
+.cup-row { display: grid; grid-template-columns: 24px 92px minmax(0, 1fr) 68px auto 32px; gap: 8px; align-items: center; }
+.cup-row .idx { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-family: var(--mono); color: var(--surface); background: var(--accent); }
+.cup-row .before { font-size: 12px; color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) {
+  .cup-row { grid-template-columns: 24px 1fr 1fr 32px; }
+  .cup-row select { grid-column: 2 / 4; }
+  .cup-row .before { grid-column: 2 / 4; }
+}
+input, select, button { font: inherit; color: var(--fg); }
+input[type="time"], input[type="number"], select {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; width: 100%; font-family: var(--mono); font-size: 13px;
+}
+select { font-family: var(--body); }
+button { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--fg-2); }
+button.icon { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; color: var(--muted); }
+button.icon:hover { color: var(--bad); border-color: var(--bad); }
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.field { display: grid; gap: 6px; }
+.field-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.field .val { font-family: var(--mono); font-size: 13px; color: var(--fg); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { font-size: 12px; padding: 3px 10px; border-radius: 999px; color: var(--fg-2); }
+.chips button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Notes */
+.notes { display: grid; gap: 14px; color: var(--fg-2); max-width: 72ch; font-size: 14px; }
+.notes p { margin: 0; }
+.notes a { color: var(--fg); }
+details { border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; color: var(--fg-2); font-size: 14px; }
+.tbl-wrap { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; font-size: 13px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--grid); }
+th { color: var(--muted); font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) { .chart .curve, .chart .area { transition: d 60ms linear; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Caffeine Curve</h1>
+    <p class="lede">Drag the cups along the axis, or edit them below, and watch how much caffeine is still in you at bedtime. The model is the standard one-compartment pharmacokinetic curve, with your own half-life.</p>
+  </header>
+
+  <section class="readouts" aria-label="Key figures">
+    <div class="readout">
+      <span class="label">Peak</span>
+      <span class="value" id="r-peak">—</span>
+      <span class="sub" id="r-peak-sub"></span>
+    </div>
+    <div class="readout">
+      <span class="label">At bedtime</span>
+      <span class="value" id="r-bed">—</span>
+      <span class="sub" id="r-bed-sub"></span>
+    </div>
+    <div class="readout">
+      <span class="label">Under threshold from</span>
+      <span class="value" id="r-clear">—</span>
+      <span class="sub" id="r-clear-sub"></span>
+    </div>
+    <div class="readout">
+      <span class="label">Last cup by</span>
+      <span class="value" id="r-last">—</span>
+      <span class="sub" id="r-last-sub"></span>
+    </div>
+  </section>
+
+  <section class="chart-card" id="chart-card">
+    <div class="chart-head">
+      <h2 id="chart-title">Caffeine in your body, mg</h2>
+      <span class="hint" id="chart-hint">Drag a cup to move it · arrow keys nudge a focused cup by 5 min</span>
+    </div>
+    <svg class="chart" id="chart" viewBox="0 0 900 400" role="img" aria-labelledby="chart-title"></svg>
+    <div class="tooltip" id="tooltip" hidden></div>
+  </section>
+
+  <section class="controls">
+    <div class="panel">
+      <h2>Cups</h2>
+      <div class="cups" id="cups"></div>
+      <div><button type="button" id="add-cup">Add a cup</button></div>
+    </div>
+    <div class="panel">
+      <h2>You</h2>
+      <div class="field">
+        <div class="field-row"><label for="half-life">Caffeine half-life</label><span class="val" id="half-life-val"></span></div>
+        <input type="range" id="half-life" min="2" max="16" step="0.25" value="5">
+        <div class="chips" id="hl-chips" aria-label="Half-life presets">
+          <button type="button" data-hl="5">Typical adult · 5 h</button>
+          <button type="button" data-hl="3">Smoker · 3 h</button>
+          <button type="button" data-hl="8">Oral contraceptive · 8 h</button>
+          <button type="button" data-hl="15">Late pregnancy · 15 h</button>
+        </div>
+      </div>
+      <div class="two">
+        <div class="field">
+          <label for="bedtime">Bedtime</label>
+          <input type="time" id="bedtime" value="23:00" step="300">
+        </div>
+        <div class="field">
+          <label for="threshold">Threshold at bedtime, mg</label>
+          <input type="number" id="threshold" value="50" min="5" max="400" step="5">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2>How it is calculated</h2>
+    <p>Each cup follows the Bateman curve: first-order absorption (rate 2.8 /h, so about 15 minutes to absorb half a cup) and first-order elimination at the rate set by your half-life. The curves add up. "Last cup by" moves the latest cup, keeping the others fixed, to the latest time that keeps you under the threshold through the night.</p>
+    <p>Half-life varies more between people than anything else here. The 5-hour figure is a population average; measured values run from roughly 2 to 10 hours in healthy adults, shorter in smokers, longer with oral contraceptives, in late pregnancy, and with some antidepressants and antibiotics. The threshold is a rule of thumb, not a tested cutoff: a 2023 meta-analysis (<a href="https://doi.org/10.1016/j.smrv.2023.101764" target="_blank" rel="noopener">Gardiner et al., Sleep Medicine Reviews</a>) found that a ~107 mg coffee taken within 8.8 hours of bedtime, or ~217 mg within 13.2 hours, measurably shortens sleep. None of this is medical advice.</p>
+    <p>Layout inspired by <a href="https://x.com/PostiauxCharles/status/2119801461278146758" target="_blank" rel="noopener">Charles Postiaux's demo</a>; the US Army's <a href="https://2b-alert-web.bhsai.org/" target="_blank" rel="noopener">2B-Alert Web</a> is the research-grade tool for alertness-optimised dosing.</p>
+    <details>
+      <summary>Table of values by hour</summary>
+      <div class="tbl-wrap"><table id="table"></table></div>
+    </details>
+  </section>
+</div>
+
+<script>
+(() => {
+  const LN2 = Math.log(2);
+  const KA = 2.8;                     // absorption rate, per hour
+  const T0 = 6, T1 = 30;              // axis: 06:00 today to 06:00 tomorrow
+  const STEP = 1 / 12;                // 5 minutes
+  const PRESETS = [
+    ["Filter coffee", 95], ["Espresso", 63], ["Double espresso", 126], ["Black tea", 47],
+    ["Green tea", 28], ["Energy drink 250 ml", 80], ["Cola 330 ml", 34], ["Decaf", 3],
+  ];
+
+  const defaults = () => ({
+    cups: [
+      { id: 1, time: 8, mg: 95 },
+      { id: 2, time: 11, mg: 95 },
+      { id: 3, time: 15.5, mg: 95 },
+    ],
+    halfLife: 5, bedtime: 23, threshold: 50, nextId: 4,
+  });
+
+  let state = defaults();
+  try {
+    const saved = JSON.parse(localStorage.getItem("caffeine-curve") || "null");
+    if (saved && Array.isArray(saved.cups) && saved.cups.length) state = { ...defaults(), ...saved };
+  } catch (e) { /* storage unavailable: use defaults */ }
+  const persist = () => { try { localStorage.setItem("caffeine-curve", JSON.stringify(state)); } catch (e) {} };
+
+  let selectedId = state.cups[state.cups.length - 1].id;
+
+  // ---- model -------------------------------------------------------------
+  const amountAt = (t, cups, halfLife) => {
+    const ke = LN2 / halfLife;
+    let s = 0;
+    for (const c of cups) {
+      const tau = t - c.time;
+      if (tau <= 0) continue;
+      s += c.mg * KA / (KA - ke) * (Math.exp(-ke * tau) - Math.exp(-KA * tau));
+    }
+    return s;
+  };
+  const maxAfter = (from, cups, halfLife) => {
+    let m = 0;
+    for (let t = from; t <= T1; t += STEP) m = Math.max(m, amountAt(t, cups, halfLife));
+    return m;
+  };
+
+  const compute = () => {
+    const { cups, halfLife, bedtime, threshold } = state;
+    const ts = [], ys = [];
+    for (let t = T0; t <= T1 + 1e-9; t += STEP) { ts.push(t); ys.push(amountAt(t, cups, halfLife)); }
+    let pi = 0; ys.forEach((y, i) => { if (y > ys[pi]) pi = i; });
+    const bedLevel = amountAt(bedtime, cups, halfLife);
+    const nightMax = maxAfter(bedtime, cups, halfLife);
+    // first time after which the level stays under the threshold
+    let clear = null;
+    for (let i = ys.length - 1; i >= 0; i--) { if (ys[i] >= threshold) { clear = i + 1 < ts.length ? ts[i + 1] : null; break; } if (i === 0) clear = ts[0]; }
+    const everAbove = ys.some(y => y >= threshold);
+    // last cup by: move the latest cup, others fixed
+    const sorted = [...cups].sort((a, b) => a.time - b.time);
+    const last = sorted[sorted.length - 1];
+    const others = sorted.slice(0, -1);
+    let lastBy = null, baseTooHigh = false;
+    if (maxAfter(bedtime, others, halfLife) > threshold) baseTooHigh = true;
+    else {
+      for (let T = bedtime; T >= T0; T -= STEP) {
+        if (maxAfter(bedtime, [...others, { time: T, mg: last.mg }], halfLife) <= threshold) { lastBy = T; break; }
+      }
+    }
+    return { ts, ys, peak: ys[pi], peakT: ts[pi], bedLevel, nightMax, clear, everAbove, lastBy, baseTooHigh, last };
+  };
+
+  // ---- formatting ---------------------------------------------------------
+  const pad = n => String(n).padStart(2, "0");
+  const hm = h => { let m = Math.round(h * 60); let hh = Math.floor(m / 60) % 24, mm = m % 60; return `${pad(hh)}:${pad(mm)}`; };
+  const hmInput = h => hm(h);
+  const fromInput = v => { const [h, m] = v.split(":").map(Number); let t = h + m / 60; if (t < T0) t += 24; return t; };
+  const dur = h => { const m = Math.round(Math.abs(h) * 60); const hh = Math.floor(m / 60), mm = m % 60; return hh ? (mm ? `${hh} h ${mm} min` : `${hh} h`) : `${mm} min`; };
+  const snap = t => Math.min(T1 - STEP, Math.max(T0, Math.round(t / STEP) * STEP));
+
+  // ---- chart geometry -----------------------------------------------------
+  const H = 400, M = { l: 44, r: 20, t: 48, b: 64 };
+  let W = 900, pw = W - M.l - M.r; const ph = H - M.t - M.b;
+  const x = t => M.l + (t - T0) / (T1 - T0) * pw;
+  let yMax = 300;
+  const y = v => M.t + ph - v / yMax * ph;
+
+  const svg = document.getElementById("chart");
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+  // static layers (built once, updated in place)
+  const gGrid = el("g", { class: "grid" }, svg);
+  const sleepZone = el("rect", { class: "sleep-zone", y: M.t, height: ph }, svg);
+  const area = el("path", { class: "area" }, svg);
+  const selArea = el("path", { class: "sel-area" }, svg);
+  const curve = el("path", { class: "curve" }, svg);
+  const thr = el("line", { class: "threshold", x1: M.l }, svg);
+  const thrLabel = el("text", { "text-anchor": "end" }, svg);
+  const bedLine = el("line", { class: "bed-line" }, svg);
+  const bedLabel1 = el("text", { class: "bed-label" }, svg);
+  const bedLabel2 = el("text", { class: "bed-label" }, svg);
+  const peakLabel1 = el("text", { class: "peak-label", "text-anchor": "middle" }, svg);
+  const peakLabel2 = el("text", { "text-anchor": "middle" }, svg);
+  const peakTick = el("line", { class: "axis" }, svg);
+  const gAxis = el("g", { class: "axis" }, svg);
+  const gCross = el("g", { class: "crosshair" }, svg); gCross.setAttribute("visibility", "hidden");
+  const crossLine = el("line", { y1: M.t, y2: M.t + ph }, gCross);
+  const crossDot = el("circle", { r: 4 }, gCross);
+  const gCups = el("g", {}, svg);
+
+  // x axis (hour ticks); the drawing is narrower on phones so the type stays legible
+  const setGeometry = () => {
+    const narrow = window.innerWidth < 640;
+    W = narrow ? 560 : 900; pw = W - M.l - M.r;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    thr.setAttribute("x2", M.l + pw); thrLabel.setAttribute("x", M.l + pw);
+    gAxis.innerHTML = "";
+    el("line", { x1: M.l, x2: M.l + pw, y1: M.t + ph, y2: M.t + ph }, gAxis);
+    for (let t = T0; t <= T1; t += narrow ? 6 : 3) {
+      el("line", { x1: x(t), x2: x(t), y1: M.t + ph, y2: M.t + ph + 5 }, gAxis);
+      el("text", { x: x(t), y: M.t + ph + 18, "text-anchor": "middle" }, gAxis).textContent = hm(t).slice(0, 2);
+    }
+    el("text", { x: M.l, y: M.t + ph + 50, "text-anchor": "start" }, gAxis).textContent = "today";
+    el("text", { x: M.l + pw, y: M.t + ph + 50, "text-anchor": "end" }, gAxis).textContent = "tomorrow";
+  };
+
+  const yGrid = [];
+  const drawGrid = () => {
+    gGrid.innerHTML = "";
+    const stepV = yMax <= 150 ? 25 : yMax <= 300 ? 50 : 100;
+    for (let v = 0; v <= yMax + 1e-9; v += stepV) {
+      el("line", { x1: M.l, x2: M.l + pw, y1: y(v), y2: y(v) }, gGrid);
+      el("text", { x: M.l - 8, y: y(v) + 4, "text-anchor": "end" }, gGrid).textContent = v;
+    }
+  };
+
+  const pathFrom = (ts, ys) => ts.map((t, i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(ys[i]).toFixed(1)}`).join("");
+  const areaFrom = (ts, ys) => pathFrom(ts, ys) + `L${x(ts[ts.length - 1]).toFixed(1)},${y(0)}L${x(ts[0]).toFixed(1)},${y(0)}Z`;
+
+  // cup markers
+  const cupEls = new Map();
+  const buildCups = () => {
+    gCups.innerHTML = ""; cupEls.clear();
+    for (const c of state.cups) {
+      const g = el("g", { class: "cup", tabindex: 0, role: "slider", "aria-valuemin": T0, "aria-valuemax": T1 }, gCups);
+      el("line", { class: "stem", y1: M.t + ph, y2: M.t + ph }, g);
+      el("circle", { class: "dot", r: 6, cy: M.t + ph }, g);
+      el("circle", { class: "hit", r: 16, cy: M.t + ph }, g);
+      el("text", { y: M.t + ph + 36 }, g);
+      g.dataset.id = c.id;
+      g.addEventListener("pointerdown", onCupDown);
+      g.addEventListener("keydown", onCupKey);
+      g.addEventListener("focus", () => { selectedId = c.id; render(); });
+      cupEls.set(c.id, g);
+    }
+  };
+
+  // ---- render -------------------------------------------------------------
+  const R = id => document.getElementById(id);
+  let lastResult = null;
+  const render = () => {
+    const res = compute(); lastResult = res;
+    const { ts, ys, peak, peakT, bedLevel, nightMax, clear, everAbove, lastBy, baseTooHigh, last } = res;
+    const { bedtime, threshold, halfLife, cups } = state;
+
+    yMax = Math.max(100, Math.ceil((Math.max(peak, threshold) * 1.25) / 50) * 50);
+    drawGrid();
+    area.setAttribute("d", areaFrom(ts, ys));
+    curve.setAttribute("d", pathFrom(ts, ys));
+
+    const sel = cups.find(c => c.id === selectedId);
+    if (sel) {
+      // the selected cup's own contribution, drawn as a band on top of the others
+      const rest = cups.filter(c => c.id !== selectedId);
+      const base = ts.map(t => amountAt(t, rest, halfLife));
+      const top = ts.map((t, i) => base[i] + amountAt(t, [sel], halfLife));
+      let d = ts.map((t, i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(top[i]).toFixed(1)}`).join("");
+      for (let i = ts.length - 1; i >= 0; i--) d += `L${x(ts[i]).toFixed(1)},${y(base[i]).toFixed(1)}`;
+      selArea.setAttribute("d", d + "Z");
+    } else selArea.setAttribute("d", "");
+
+    thr.setAttribute("y1", y(threshold)); thr.setAttribute("y2", y(threshold));
+    thrLabel.setAttribute("y", y(threshold) - 5); thrLabel.textContent = `${threshold} mg threshold`;
+
+    sleepZone.setAttribute("x", x(bedtime)); sleepZone.setAttribute("width", Math.max(0, x(T1) - x(bedtime)));
+    bedLine.setAttribute("x1", x(bedtime)); bedLine.setAttribute("x2", x(bedtime));
+    bedLine.setAttribute("y1", M.t - 6); bedLine.setAttribute("y2", M.t + ph);
+    const bedRight = x(bedtime) < M.l + pw * 0.7;
+    const bx = x(bedtime) + (bedRight ? 8 : -8);
+    for (const t of [bedLabel1, bedLabel2]) { t.setAttribute("x", bx); t.setAttribute("text-anchor", bedRight ? "start" : "end"); }
+    bedLabel1.setAttribute("y", M.t + 4); bedLabel1.textContent = `Bed ${hm(bedtime)}`;
+    bedLabel2.setAttribute("y", M.t + 18); bedLabel2.textContent = `${Math.round(bedLevel)} mg still in you`;
+
+    const px = Math.min(Math.max(x(peakT), M.l + 40), M.l + pw - 40);
+    const peakNearBed = Math.abs(x(peakT) - x(bedtime)) < 90;
+    const py = peakNearBed ? y(peak) - 36 : y(peak) - 22;
+    peakLabel1.setAttribute("x", px); peakLabel1.setAttribute("y", py); peakLabel1.textContent = `Peak ${Math.round(peak)} mg`;
+    peakLabel2.setAttribute("x", px); peakLabel2.setAttribute("y", py + 13); peakLabel2.textContent = hm(peakT);
+    peakTick.setAttribute("x1", x(peakT)); peakTick.setAttribute("x2", x(peakT));
+    peakTick.setAttribute("y1", py + 17); peakTick.setAttribute("y2", y(peak) - 4);
+
+    // cups
+    for (const c of cups) {
+      const g = cupEls.get(c.id); if (!g) continue;
+      const cx = x(c.time);
+      g.classList.toggle("selected", c.id === selectedId);
+      g.setAttribute("aria-valuenow", c.time.toFixed(2));
+      g.setAttribute("aria-valuetext", `${hm(c.time)}, ${c.mg} mg`);
+      g.setAttribute("aria-label", `Cup at ${hm(c.time)}`);
+      g.querySelector(".stem").setAttribute("x1", cx); g.querySelector(".stem").setAttribute("x2", cx);
+      g.querySelector(".stem").setAttribute("y1", y(amountAt(c.time + 0.001, cups, halfLife)));
+      for (const circ of g.querySelectorAll("circle")) circ.setAttribute("cx", cx);
+      const label = g.querySelector("text"); label.setAttribute("x", cx); label.textContent = c.id === selectedId ? hm(c.time) : "";
+    }
+
+    // readouts
+    R("r-peak").innerHTML = `${Math.round(peak)}<small>mg</small>`;
+    R("r-peak-sub").textContent = `at ${hm(peakT)}`;
+    const cls = bedLevel <= threshold * 0.6 ? "good" : bedLevel <= threshold ? "warn" : "bad";
+    R("r-bed").innerHTML = `${Math.round(bedLevel)}<small>mg</small>`;
+    R("r-bed-sub").innerHTML = `<span class="pill ${cls}">${cls === "bad" ? "over" : "under"} the ${threshold} mg line</span>` +
+      (nightMax > bedLevel + 1 ? ` <span>· rises to ${Math.round(nightMax)} mg overnight</span>` : "");
+    if (!everAbove) { R("r-clear").textContent = "all day"; R("r-clear-sub").textContent = "never reaches the threshold"; }
+    else if (clear == null) { R("r-clear").textContent = "> 06:00"; R("r-clear-sub").textContent = "still over it tomorrow morning"; }
+    else { R("r-clear").textContent = hm(clear); R("r-clear-sub").textContent = clear > bedtime ? `${dur(clear - bedtime)} after bedtime` : `${dur(bedtime - clear)} before bed`; }
+    if (baseTooHigh) { R("r-last").textContent = "—"; R("r-last-sub").textContent = `the earlier cups alone leave you over ${threshold} mg`; }
+    else if (lastBy == null) { R("r-last").textContent = "< 06:00"; R("r-last-sub").textContent = `even a 06:00 cup of ${last.mg} mg is too late`; }
+    else { R("r-last").textContent = hm(lastBy); R("r-last-sub").textContent = `${dur(bedtime - lastBy)} before bed · ${last.mg} mg cup${lastBy < last.time - 1e-6 ? ` · yours is ${dur(last.time - lastBy)} late` : ""}`; }
+
+    renderTable(ts, ys);
+    R("half-life-val").textContent = `${halfLife} h`;
+    for (const b of document.querySelectorAll("#hl-chips button")) b.setAttribute("aria-pressed", String(Number(b.dataset.hl) === halfLife));
+    persist();
+  };
+
+  const renderTable = (ts, ys) => {
+    const rows = [];
+    for (let i = 0; i < ts.length; i += 12) rows.push(`<tr><td>${hm(ts[i])}</td><td>${Math.round(ys[i])}</td></tr>`);
+    R("table").innerHTML = `<thead><tr><th>Time</th><th>mg in body</th></tr></thead><tbody>${rows.join("")}</tbody>`;
+  };
+
+  // ---- cups panel -----------------------------------------------------------
+  const renderCupsPanel = () => {
+    const box = R("cups"); box.innerHTML = "";
+    const sorted = [...state.cups].sort((a, b) => a.time - b.time);
+    sorted.forEach((c, i) => {
+      const row = document.createElement("div"); row.className = "cup-row"; row.dataset.id = c.id;
+      const presetIdx = PRESETS.findIndex(p => p[1] === c.mg);
+      row.innerHTML = `
+        <span class="idx" aria-hidden="true">${i + 1}</span>
+        <input type="time" step="300" id="cup-time-${c.id}" aria-label="Cup ${i + 1} time" value="${hmInput(c.time)}">
+        <select id="cup-preset-${c.id}" aria-label="Cup ${i + 1} drink">
+          ${PRESETS.map((p, j) => `<option value="${p[1]}" ${j === presetIdx ? "selected" : ""}>${p[0]} · ${p[1]} mg</option>`).join("")}
+          <option value="custom" ${presetIdx < 0 ? "selected" : ""}>Custom</option>
+        </select>
+        <input type="number" id="cup-mg-${c.id}" aria-label="Cup ${i + 1} caffeine, mg" value="${c.mg}" min="1" max="500" step="1">
+        <span class="before" id="cup-before-${c.id}"></span>
+        <button type="button" class="icon" aria-label="Remove cup ${i + 1}" ${state.cups.length === 1 ? "disabled" : ""}>×</button>`;
+      row.querySelector("input[type=time]").addEventListener("change", e => { c.time = snap(fromInput(e.target.value)); selectedId = c.id; update(); });
+      row.querySelector("select").addEventListener("change", e => { if (e.target.value !== "custom") { c.mg = Number(e.target.value); row.querySelector("input[type=number]").value = c.mg; } selectedId = c.id; render(); updateBefore(); });
+      row.querySelector("input[type=number]").addEventListener("input", e => { const v = Number(e.target.value); if (v > 0) { c.mg = v; selectedId = c.id; render(); } });
+      row.querySelector("button").addEventListener("click", () => { state.cups = state.cups.filter(k => k.id !== c.id); if (selectedId === c.id) selectedId = state.cups[state.cups.length - 1].id; update(); });
+      box.appendChild(row);
+    });
+    updateBefore();
+  };
+  const updateBefore = () => {
+    for (const c of state.cups) {
+      const s = R(`cup-before-${c.id}`); if (!s) continue;
+      const d = state.bedtime - c.time;
+      s.textContent = d >= 0 ? `${dur(d)} before bed` : `${dur(-d)} after bed`;
+    }
+  };
+  const update = () => { buildCups(); renderCupsPanel(); render(); };
+
+  R("add-cup").addEventListener("click", () => {
+    const latest = Math.max(...state.cups.map(c => c.time));
+    const t = snap(Math.min(latest + 3, state.bedtime - 1));
+    const c = { id: state.nextId++, time: t, mg: 95 };
+    state.cups.push(c); selectedId = c.id; update();
+    cupEls.get(c.id)?.focus();
+  });
+
+  // ---- "you" panel ----------------------------------------------------------
+  R("half-life").addEventListener("input", e => { state.halfLife = Number(e.target.value); render(); });
+  for (const b of document.querySelectorAll("#hl-chips button")) b.addEventListener("click", () => { state.halfLife = Number(b.dataset.hl); R("half-life").value = state.halfLife; render(); });
+  R("bedtime").addEventListener("change", e => { state.bedtime = Math.min(T1 - 1, Math.max(T0 + 1, fromInput(e.target.value))); update(); });
+  R("threshold").addEventListener("input", e => { const v = Number(e.target.value); if (v > 0) { state.threshold = v; render(); } });
+
+  // ---- dragging & hover -----------------------------------------------------
+  const svgPoint = ev => { const r = svg.getBoundingClientRect(); return { x: (ev.clientX - r.left) / r.width * W, y: (ev.clientY - r.top) / r.height * H }; };
+  const tFromX = px => T0 + (px - M.l) / pw * (T1 - T0);
+  let drag = null;
+  function onCupDown(ev) {
+    const g = ev.currentTarget; const id = Number(g.dataset.id);
+    const c = state.cups.find(k => k.id === id); if (!c) return;
+    drag = { c, g }; selectedId = id; g.setPointerCapture(ev.pointerId); hideTip(); ev.preventDefault(); render();
+    g.addEventListener("pointermove", onCupMove); g.addEventListener("pointerup", onCupUp); g.addEventListener("pointercancel", onCupUp);
+  }
+  function onCupMove(ev) {
+    if (!drag) return;
+    const t = snap(tFromX(svgPoint(ev).x));
+    if (t !== drag.c.time) { drag.c.time = t; render(); const inp = R(`cup-time-${drag.c.id}`); if (inp) inp.value = hmInput(t); updateBefore(); }
+  }
+  function onCupUp(ev) {
+    if (!drag) return;
+    drag.g.removeEventListener("pointermove", onCupMove); drag.g.removeEventListener("pointerup", onCupUp); drag.g.removeEventListener("pointercancel", onCupUp);
+    drag = null; renderCupsPanel();
+  }
+  function onCupKey(ev) {
+    const id = Number(ev.currentTarget.dataset.id); const c = state.cups.find(k => k.id === id); if (!c) return;
+    const big = ev.shiftKey ? 12 : 1;
+    if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") c.time = snap(c.time - STEP * big);
+    else if (ev.key === "ArrowRight" || ev.key === "ArrowUp") c.time = snap(c.time + STEP * big);
+    else if (ev.key === "Delete" || ev.key === "Backspace") { if (state.cups.length > 1) { state.cups = state.cups.filter(k => k.id !== id); selectedId = state.cups[state.cups.length - 1].id; update(); cupEls.get(selectedId)?.focus(); } ev.preventDefault(); return; }
+    else return;
+    ev.preventDefault(); render(); renderCupsPanel();
+  }
+
+  const tip = R("tooltip");
+  const hideTip = () => { tip.hidden = true; gCross.setAttribute("visibility", "hidden"); };
+  svg.addEventListener("pointermove", ev => {
+    if (drag || !lastResult) return;
+    const p = svgPoint(ev);
+    if (p.x < M.l || p.x > M.l + pw || p.y < M.t - 10 || p.y > M.t + ph + 10) { hideTip(); return; }
+    const t = snap(tFromX(p.x));
+    const total = amountAt(t, state.cups, state.halfLife);
+    gCross.setAttribute("visibility", "visible");
+    crossLine.setAttribute("x1", x(t)); crossLine.setAttribute("x2", x(t));
+    crossDot.setAttribute("cx", x(t)); crossDot.setAttribute("cy", y(total));
+    const parts = [...state.cups].sort((a, b) => a.time - b.time).map((c, i) => {
+      const v = amountAt(t, [c], state.halfLife);
+      return v > 0.5 ? `<div class="row"><span>Cup ${i + 1} · ${hm(c.time)}</span><b>${Math.round(v)} mg</b></div>` : "";
+    }).join("");
+    tip.innerHTML = `<div class="t">${hm(t)}</div><div class="row"><span>In your body</span><b>${Math.round(total)} mg</b></div>${parts}`;
+    tip.hidden = false;
+    const card = R("chart-card").getBoundingClientRect();
+    const sx = svg.getBoundingClientRect();
+    const left = sx.left - card.left + x(t) / W * sx.width;
+    const flip = left > card.width * 0.65;
+    tip.style.left = flip ? `${left - 12 - tip.offsetWidth}px` : `${left + 12}px`;
+    tip.style.top = `${sx.top - card.top + Math.max(0, y(total) / H * sx.height - 60)}px`;
+  });
+  svg.addEventListener("pointerleave", hideTip);
+
+  // ---- boot -----------------------------------------------------------------
+  R("half-life").value = state.halfLife;
+  R("bedtime").value = hmInput(state.bedtime);
+  R("threshold").value = state.threshold;
+  setGeometry();
+  update();
+  let resizeTimer = 0, lastNarrow = window.innerWidth < 640;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { const narrow = window.innerWidth < 640; if (narrow !== lastNarrow) { lastNarrow = narrow; setGeometry(); render(); } }, 120);
+  });
+})();
+</script>
+</body>
+</html>
